@@ -18,11 +18,16 @@ RUN mkdir -p /seed \
 
 FROM python:${PYTHON_VERSION}-slim AS app
 
+# Non-secret. If a deploy target cannot inject runtime env vars, set this ARG default
+# to the public embedding proxy URL before building the image.
+ARG OPENAI_EMBEDDING_PROXY_URL=
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    OPENAI_EMBEDDING_PROXY_URL=${OPENAI_EMBEDDING_PROXY_URL}
 
 WORKDIR /app
 

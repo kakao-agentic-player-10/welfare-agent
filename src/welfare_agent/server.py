@@ -45,6 +45,9 @@ def create_server() -> FastMCP:
             api_key=settings.openai_api_key,
             model=settings.openai_embedding_model,
             dimensions=settings.openai_embedding_dimensions,
+            proxy_url=settings.openai_embedding_proxy_url,
+            proxy_token=settings.openai_embedding_proxy_token,
+            timeout_seconds=settings.openai_embedding_proxy_timeout_seconds,
         )
     )
     local = KakaoLocalClient(settings.kakao_rest_api_key)
@@ -131,7 +134,10 @@ def create_server() -> FastMCP:
                 "ok": False,
                 "query": query,
                 "items": [],
-                "message": "OPENAI_API_KEY가 필요합니다. 임베딩 기반 검색을 사용하려면 키를 설정하세요.",
+                "message": (
+                    "OPENAI_API_KEY 또는 OPENAI_EMBEDDING_PROXY_URL이 필요합니다. "
+                    "임베딩 기반 검색을 사용하려면 직접 OpenAI 키를 설정하거나 임베딩 프록시를 설정하세요."
+                ),
             }
 
         active_count = benefit_store.count_active()

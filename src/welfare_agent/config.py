@@ -11,6 +11,9 @@ class Settings:
     openai_api_key: str
     openai_embedding_model: str
     openai_embedding_dimensions: int
+    openai_embedding_proxy_url: str
+    openai_embedding_proxy_token: str
+    openai_embedding_proxy_timeout_seconds: float
     sqlite_path: str
     public_service_api_url: str
     youth_policy_api_url: str
@@ -48,6 +51,11 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
         openai_embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").strip(),
         openai_embedding_dimensions=int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", "1536")),
+        openai_embedding_proxy_url=os.getenv("OPENAI_EMBEDDING_PROXY_URL", "").strip(),
+        openai_embedding_proxy_token=os.getenv("OPENAI_EMBEDDING_PROXY_TOKEN", "").strip(),
+        openai_embedding_proxy_timeout_seconds=float(
+            os.getenv("OPENAI_EMBEDDING_PROXY_TIMEOUT_SECONDS", "30")
+        ),
         sqlite_path=os.getenv("SQLITE_PATH", "./data/welfare-agent.db").strip(),
         public_service_api_url=os.getenv("PUBLIC_SERVICE_API_URL", "").strip(),
         youth_policy_api_url=os.getenv("YOUTH_POLICY_API_URL", "").strip(),
