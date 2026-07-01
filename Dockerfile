@@ -20,7 +20,7 @@ FROM python:${PYTHON_VERSION}-slim AS app
 
 # Non-secret. If a deploy target cannot inject runtime env vars, set this ARG default
 # to the public embedding proxy URL before building the image.
-ARG OPENAI_EMBEDDING_PROXY_URL=
+ARG OPENAI_EMBEDDING_PROXY_URL=https://playmcp-embedding-proxy.onrender.com/v1/embeddings
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
