@@ -29,8 +29,17 @@ from welfare_agent.store import BenefitStore
 
 
 logger = logging.getLogger(__name__)
-MAX_USER_BENEFIT_RESULTS = 10
+MAX_USER_BENEFIT_RESULTS = 5
 MAX_SEARCH_CANDIDATES = 30
+MAX_SEARCH_RESPONSE_ITEMS = 5
+SUMMARY_LIMIT = 120
+TARGET_LIMIT = 100
+CRITERIA_LIMIT = 80
+CONTENT_LIMIT = 120
+APPLICATION_METHOD_LIMIT = 80
+CONTACT_LIMIT = 60
+MATCH_REASON_LIMIT = 70
+MAX_MATCH_REASONS = 2
 
 
 # FastMCP 서버를 만들고 PlayMCP에 노출할 도구들을 등록한다.
@@ -115,7 +124,7 @@ def create_server() -> FastMCP:
         exclude_definitely_closed: bool | None = True,
         strict: bool | None = False,
     ) -> dict[str, Any]:
-        """[Step 2/3] Search the BenefitScout(혜택탐정) welfare benefit database using the profile from save_profile(). Call AFTER save_profile(); pass profile["profile"] as the profile argument. Uses vector similarity search on pre-indexed Korean public benefit programs. profile=required dict from save_profile()["profile"]; keyword=optional search term to focus results, leave empty to auto-generate from profile e.g. "청년 월세"|"임산부 지원"; size=max results 1-30 default 30; available_only=true skips officially closed programs (default true); include_unknown_periods=true includes programs with unannounced periods (default true); exclude_definitely_closed=true excludes confirmed closed (default true); strict=true gates on profile completeness, returns needs_input+required_fields if missing (default false); as_of_date=YYYY-MM-DD reference date, defaults to today KST. Returns {"ok":true,"items":[...],"result_count":N}; pass items to match_benefits() as the benefits parameter."""
+        """[Step 2/3] Search the BenefitScout(혜택탐정) welfare benefit database using the profile from save_profile(). Call AFTER save_profile(); pass profile["profile"] as the profile argument. Uses vector similarity search on pre-indexed Korean public benefit programs. profile=required dict from save_profile()["profile"]; keyword=optional search term to focus results, leave empty to auto-generate from profile e.g. "청년 월세"|"임산부 지원"; size=max internal candidates 1-30 default 30; available_only=true skips officially closed programs (default true); include_unknown_periods=true includes programs with unannounced periods (default true); exclude_definitely_closed=true excludes confirmed closed (default true); strict=true gates on profile completeness, returns needs_input+required_fields if missing (default false); as_of_date=YYYY-MM-DD reference date, defaults to today KST. Returns compact top candidates {"ok":true,"items":[...],"result_count":N}; pass items to match_benefits() as the benefits parameter."""
         available_only = True if available_only is None else bool(available_only)
         include_unknown_periods = True if include_unknown_periods is None else bool(include_unknown_periods)
         exclude_definitely_closed = (
@@ -170,9 +179,10 @@ def create_server() -> FastMCP:
                 if len(candidates) >= result_limit or fetched_count < fetch_limit:
                     break
             ranked_candidates = rank_benefits(profile, candidates)[:result_limit]
+            response_candidates = ranked_candidates[:MAX_SEARCH_RESPONSE_ITEMS]
             items = [
                 with_search_match_metadata(profile, match)
-                for match in ranked_candidates
+                for match in response_candidates
             ]
             items = [to_search_item(item) for item in items]
         except ExternalApiError as exc:
@@ -185,6 +195,7 @@ def create_server() -> FastMCP:
             "query": query,
             "items": items,
             "result_count": len(items),
+            "candidate_count": len(ranked_candidates),
             "fetched_count": fetched_count,
             "index_count": active_count,
             "available_only": available_only,
@@ -194,6 +205,7 @@ def create_server() -> FastMCP:
             "include_unknown_periods": include_unknown_periods,
             "requested_size": size,
             "max_size": MAX_SEARCH_CANDIDATES,
+            "max_returned_items": MAX_SEARCH_RESPONSE_ITEMS,
         }
 
     # 검색 결과와 사용자 프로필을 비교해 가능성 순으로 정렬한다.
@@ -207,13 +219,18 @@ def create_server() -> FastMCP:
         )
     )
     def match_benefits(profile: dict[str, Any], benefits: list[dict[str, Any]]) -> dict[str, Any]:
-        """[Step 3/3] Re-rank BenefitScout(혜택탐정) benefit candidates by eligibility likelihood and return the final list to show the user. Call AFTER search_benefits(). Re-ranks by age range, region match, household type, and target group signals beyond vector similarity. profile=same profile dict from save_profile(); benefits=items list from search_benefits()["items"], pass as-is without modification. Returns {"matches":[...],"matched_count":N,"disclaimer":"..."} with up to 10 programs sorted by likelihood (high>medium>low). Each match includes likelihood, match_score, matched_reasons, and full benefit details. ALWAYS show the disclaimer text verbatim when presenting results to the user. Likelihood scores indicate relevance, NOT confirmed eligibility — advise users to verify with the official organization."""
+        """[Step 3/3] Re-rank BenefitScout(혜택탐정) benefit candidates by eligibility likelihood and return the final list to show the user. Call AFTER search_benefits(). Re-ranks by age range, region match, household type, and target group signals beyond vector similarity. profile=same profile dict from save_profile(); benefits=items list from search_benefits()["items"], pass as-is without modification. Returns {"matches":[...],"matched_count":N,"disclaimer":"..."} with up to 5 programs sorted by likelihood (high>medium>low). Each match includes likelihood, match_score, matched_reasons, and compact benefit details. ALWAYS show the disclaimer text verbatim when presenting results to the user. Likelihood scores indicate relevance, NOT confirmed eligibility — advise users to verify with the official organization."""
         matches = rank_benefits(profile, benefits)[:MAX_USER_BENEFIT_RESULTS]
         input_count = len(benefits)
         matched_count = len(matches)
         return {
             "matches": [
-                {**match, "benefit": to_search_item(match["benefit"])}
+                {
+                    "likelihood": match["likelihood"],
+                    "match_score": match["score"],
+                    "matched_reasons": compact_reasons(match["matched_reasons"]),
+                    "benefit": to_search_item(match["benefit"]),
+                }
                 for match in matches
             ],
             "input_count": input_count,
@@ -298,47 +315,58 @@ def with_search_match_metadata(profile: dict[str, Any], match: dict[str, Any]) -
     }
 
 
-# 검색/매칭 결과를 사용자 표시에 필요한 상세 필드까지 포함해 정리한다.
+# 검색/매칭 결과를 PlayMCP 응답 크기 제한에 맞게 핵심 필드로 정리한다.
 def to_search_item(item: dict[str, Any]) -> dict[str, Any]:
-    compact = {
-        "id": item.get("id"),
-        "source": item.get("source"),
-        "external_id": item.get("external_id"),
-        "title": item.get("title", ""),
-        "summary": truncate_text(item.get("summary", ""), 600),
-        "target": truncate_text(item.get("target", ""), 600),
-        "criteria": truncate_text(item.get("criteria", ""), 600),
-        "content": truncate_text(item.get("content", ""), 1200),
-        "category": item.get("category", ""),
-        "application_period": item.get("application_period", ""),
-        "business_period": item.get("business_period", ""),
-        "application_status": item.get("application_status", ""),
-        "period_status": item.get("period_status", ""),
-        "period_parse_status": item.get("period_parse_status", ""),
-        "period_source": item.get("period_source", ""),
-        "period_start_date": item.get("period_start_date", ""),
-        "period_end_date": item.get("period_end_date", ""),
-        "period_can_exclude": item.get("period_can_exclude", False),
-        "period_reason": item.get("period_reason", ""),
-        "application_method": truncate_text(item.get("application_method", ""), 400),
-        "organization": item.get("organization", ""),
-        "contact": truncate_text(item.get("contact", ""), 200),
-        "url": item.get("url", ""),
-        "application_url": item.get("application_url", ""),
-        "extra_urls": item.get("extra_urls", ""),
-        "region_sido": item.get("region_sido", ""),
-        "region_sigungu": item.get("region_sigungu", ""),
-        "age_min": item.get("age_min", ""),
-        "age_max": item.get("age_max", ""),
-        "region_scope": item.get("region_scope", ""),
-        "region_scope_reason": item.get("region_scope_reason", ""),
-        "likelihood": item.get("likelihood", ""),
-        "match_score": item.get("match_score", ""),
-        "matched_reasons": item.get("matched_reasons", []),
-    }
-    if "vector_distance" in item:
-        compact["vector_distance"] = item["vector_distance"]
+    compact: dict[str, Any] = {}
+    add_present(compact, "id", item.get("id"))
+    add_present(compact, "source", item.get("source"))
+    add_present(compact, "external_id", item.get("external_id"))
+    add_present(compact, "title", item.get("title"))
+    add_present(compact, "summary", truncate_text(item.get("summary"), SUMMARY_LIMIT))
+    add_present(compact, "target", truncate_text(item.get("target"), TARGET_LIMIT))
+    add_present(compact, "criteria", truncate_text(item.get("criteria"), CRITERIA_LIMIT))
+    add_present(compact, "content", truncate_text(item.get("content"), CONTENT_LIMIT))
+    add_present(compact, "category", item.get("category"))
+    add_present(compact, "application_period", item.get("application_period"))
+    add_present(compact, "application_status", item.get("application_status"))
+    add_present(compact, "period_status", item.get("period_status"))
+    add_present(
+        compact,
+        "application_method",
+        truncate_text(item.get("application_method"), APPLICATION_METHOD_LIMIT),
+    )
+    add_present(compact, "organization", item.get("organization"))
+    add_present(compact, "contact", truncate_text(item.get("contact"), CONTACT_LIMIT))
+    add_present(compact, "url", item.get("url"))
+    add_present(compact, "application_url", item.get("application_url"))
+    add_present(compact, "region_sido", item.get("region_sido"))
+    add_present(compact, "region_sigungu", item.get("region_sigungu"))
+    add_present(compact, "age_min", item.get("age_min"))
+    add_present(compact, "age_max", item.get("age_max"))
+    add_present(compact, "region_scope", item.get("region_scope"))
+    add_present(
+        compact,
+        "region_scope_reason",
+        truncate_text(item.get("region_scope_reason"), MATCH_REASON_LIMIT),
+    )
+    add_present(compact, "likelihood", item.get("likelihood"))
+    add_present(compact, "match_score", item.get("match_score"))
+    add_present(compact, "matched_reasons", compact_reasons(item.get("matched_reasons", [])))
+    if item.get("vector_distance") not in (None, ""):
+        compact["vector_distance"] = round(float(item["vector_distance"]), 4)
     return compact
+
+
+def add_present(target: dict[str, Any], key: str, value: Any) -> None:
+    if value in (None, "", [], {}):
+        return
+    target[key] = value
+
+
+def compact_reasons(reasons: Any) -> list[str]:
+    if not isinstance(reasons, list):
+        return []
+    return [truncate_text(reason, MATCH_REASON_LIMIT) for reason in reasons[:MAX_MATCH_REASONS]]
 
 
 def truncate_text(value: Any, limit: int) -> str:
