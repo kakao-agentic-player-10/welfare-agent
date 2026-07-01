@@ -7,6 +7,14 @@ import httpx
 from welfare_agent.errors import ExternalApiError
 
 
+DEFAULT_PLACE_LIMIT = 3
+VISIT_OFFICE_GUIDANCE = (
+    "방문 신청은 보통 주민등록상 주소지 관할 동주민센터/행정복지센터에서 진행합니다. "
+    "아래 장소가 본인 주소지 관할 센터인지 방문 전 전화로 확인하세요."
+)
+VISIT_OFFICE_DISPLAY_POLICY = "사용자에게는 지역별로 가까운 후보 1~2곳만 간단히 보여주세요."
+
+
 class KakaoLocalClient:
     # Kakao Local API 호출에 사용할 REST API 키를 보관한다.
     def __init__(
@@ -35,7 +43,7 @@ class KakaoLocalClient:
                 "places": [],
             }
 
-        params: dict[str, Any] = {"query": query, "size": 5}
+        params: dict[str, Any] = {"query": query, "size": DEFAULT_PLACE_LIMIT}
         if x and y:
             params.update({"x": x, "y": y, "radius": radius})
 
@@ -63,7 +71,7 @@ class KakaoLocalClient:
             }
             for item in payload.get("documents", [])
         ]
-        return {"ok": True, "places": places}
+        return visit_office_response(places)
 
     def _keyword_search_via_proxy(
         self,
@@ -73,7 +81,7 @@ class KakaoLocalClient:
         y: str = "",
         radius: int = 20000,
     ) -> dict[str, Any]:
-        payload: dict[str, Any] = {"query": query, "size": 5}
+        payload: dict[str, Any] = {"query": query, "size": DEFAULT_PLACE_LIMIT}
         if x and y:
             payload.update({"x": x, "y": y, "radius": radius})
 
@@ -96,8 +104,19 @@ class KakaoLocalClient:
         places = result.get("places", [])
         if not isinstance(places, list):
             places = []
-        return {
-            "ok": bool(result.get("ok", True)),
-            "places": places,
-            "source": "proxy",
-        }
+        return visit_office_response(places, ok=bool(result.get("ok", True)), source="proxy")
+
+
+def visit_office_response(
+    places: list[dict[str, Any]],
+    *,
+    ok: bool = True,
+    source: str = "direct",
+) -> dict[str, Any]:
+    return {
+        "ok": ok,
+        "places": places[:DEFAULT_PLACE_LIMIT],
+        "guidance": VISIT_OFFICE_GUIDANCE,
+        "display_policy": VISIT_OFFICE_DISPLAY_POLICY,
+        "source": source,
+    }
