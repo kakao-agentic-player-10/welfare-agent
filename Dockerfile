@@ -19,15 +19,17 @@ RUN mkdir -p /seed \
 FROM python:${PYTHON_VERSION}-slim AS app
 
 # Non-secret. If a deploy target cannot inject runtime env vars, set this ARG default
-# to the public embedding proxy URL before building the image.
+# to the public proxy URLs before building the image.
 ARG OPENAI_EMBEDDING_PROXY_URL=https://playmcp-embedding-proxy.onrender.com/v1/embeddings
+ARG KAKAO_LOCAL_PROXY_URL=https://playmcp-embedding-proxy.onrender.com/v1/kakao/local/search
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
-    OPENAI_EMBEDDING_PROXY_URL=${OPENAI_EMBEDDING_PROXY_URL}
+    OPENAI_EMBEDDING_PROXY_URL=${OPENAI_EMBEDDING_PROXY_URL} \
+    KAKAO_LOCAL_PROXY_URL=${KAKAO_LOCAL_PROXY_URL}
 
 WORKDIR /app
 

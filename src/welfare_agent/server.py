@@ -59,7 +59,12 @@ def create_server() -> FastMCP:
             timeout_seconds=settings.openai_embedding_proxy_timeout_seconds,
         )
     )
-    local = KakaoLocalClient(settings.kakao_rest_api_key)
+    local = KakaoLocalClient(
+        settings.kakao_rest_api_key,
+        proxy_url=settings.kakao_local_proxy_url,
+        proxy_token=settings.kakao_local_proxy_token,
+        proxy_timeout_seconds=settings.kakao_local_proxy_timeout_seconds,
+    )
     mcp = FastMCP("BenefitScout")
     start_background_sync(settings)
 

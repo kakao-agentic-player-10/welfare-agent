@@ -18,6 +18,9 @@ class Settings:
     public_service_api_url: str
     youth_policy_api_url: str
     kakao_rest_api_key: str
+    kakao_local_proxy_url: str
+    kakao_local_proxy_token: str
+    kakao_local_proxy_timeout_seconds: float
     sync_enabled: bool
     sync_on_startup: bool
     sync_daily: bool
@@ -60,6 +63,11 @@ def load_settings() -> Settings:
         public_service_api_url=os.getenv("PUBLIC_SERVICE_API_URL", "").strip(),
         youth_policy_api_url=os.getenv("YOUTH_POLICY_API_URL", "").strip(),
         kakao_rest_api_key=os.getenv("KAKAO_REST_API_KEY", "").strip(),
+        kakao_local_proxy_url=os.getenv("KAKAO_LOCAL_PROXY_URL", "").strip(),
+        kakao_local_proxy_token=os.getenv("KAKAO_LOCAL_PROXY_TOKEN", "").strip(),
+        kakao_local_proxy_timeout_seconds=float(
+            os.getenv("KAKAO_LOCAL_PROXY_TIMEOUT_SECONDS", "10")
+        ),
         sync_enabled=env_bool("WELFARE_SYNC_ENABLED", True),
         sync_on_startup=env_bool("WELFARE_SYNC_ON_STARTUP", True),
         sync_daily=env_bool("WELFARE_SYNC_DAILY", True),
