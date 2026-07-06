@@ -11,6 +11,7 @@
 | `save_profile` | 자연어/필드 입력을 검색용 프로필로 구조화 — 항상 첫 번째로 호출 |
 | `search_benefits` | 프로필 기반 벡터 검색으로 복지 DB에서 후보 탐색 |
 | `match_benefits` | 검색 결과를 나이·지역·가구유형 적합성으로 재정렬, 상위 5개 반환 |
+| `compare_benefits` | 비슷한 후보의 대상·지역·기간·신청방법·확인 필요 항목을 나란히 비교 |
 | `find_visit_offices` | Kakao Local API로 방문 신청 기관(주민센터 등) 검색 |
 
 ## 데이터 소스

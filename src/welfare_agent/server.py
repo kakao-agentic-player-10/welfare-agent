@@ -40,6 +40,9 @@ APPLICATION_METHOD_LIMIT = 80
 CONTACT_LIMIT = 60
 MATCH_REASON_LIMIT = 70
 MAX_MATCH_REASONS = 2
+MAX_COMPARE_BENEFITS = 5
+COMPARE_FIELD_LIMIT = 90
+COMPARE_NOTE_LIMIT = 60
 
 
 # FastMCP 서버를 만들고 PlayMCP에 노출할 도구들을 등록한다.
@@ -94,7 +97,7 @@ def create_server() -> FastMCP:
         revenue_status: str = "",
         interests: list[str] | None = None,
     ) -> dict[str, Any]:
-        """[Step 1/3] Build a structured eligibility profile for BenefitScout(혜택탐정). Call this FIRST when a user asks about government welfare benefits, subsidies, or support programs. Pass the returned profile dict to search_benefits() and match_benefits(). Omit unknown fields rather than guessing. text=free-form Korean description of the user's situation e.g. "취업준비 중인 28살 대구 청년, 월세 거주"; age=age in years; region=시도 e.g. "서울"|"경기" or 시군구 e.g. "강남구"|"수원시"; household_type=1인가구|한부모|신혼부부|조손가구|다자녀|일반가구; employment_status=취업준비생|재직자|구직자|자영업자|프리랜서|무직|퇴직자; housing_type=월세|전세|자가|무주택|공공임대; marital_status=미혼|기혼|이혼|사별; business_type=e.g. 소상공인|개인사업자; revenue_status=e.g. 저소득|중위소득 80% 이하|기초생활수급; interests=category keywords e.g. ["주거","교육","청년","취업","의료"]. Returns {"profile":{...}}."""
+        """[Step 1/3] 혜택탐정(BenefitScout) | Build a structured eligibility profile. Call this FIRST when a user asks about government welfare benefits, subsidies, or support programs. Pass the returned profile dict to search_benefits(), match_benefits(), and compare_benefits(). Omit unknown fields rather than guessing. text=free-form Korean description of the user's situation e.g. "취업준비 중인 28살 대구 청년, 월세 거주"; age=age in years; region=시도 e.g. "서울"|"경기" or 시군구 e.g. "강남구"|"수원시"; household_type=1인가구|한부모|신혼부부|조손가구|다자녀|일반가구; employment_status=취업준비생|재직자|구직자|자영업자|프리랜서|무직|퇴직자; housing_type=월세|전세|자가|무주택|공공임대; marital_status=미혼|기혼|이혼|사별; business_type=e.g. 소상공인|개인사업자; revenue_status=e.g. 저소득|중위소득 80% 이하|기초생활수급; interests=category keywords e.g. ["주거","교육","청년","취업","의료"]. Returns {"profile":{...}}."""
         profile = build_profile(
             text=text,
             age=age,
@@ -129,7 +132,7 @@ def create_server() -> FastMCP:
         exclude_definitely_closed: bool | None = True,
         strict: bool | None = False,
     ) -> dict[str, Any]:
-        """[Step 2/3] Search the BenefitScout(혜택탐정) welfare benefit database using the profile from save_profile(). Call AFTER save_profile(); pass profile["profile"] as the profile argument. Uses vector similarity search on pre-indexed Korean public benefit programs. profile=required dict from save_profile()["profile"]; keyword=optional search term to focus results, leave empty to auto-generate from profile e.g. "청년 월세"|"임산부 지원"; size=max internal candidates 1-30 default 30; available_only=true skips officially closed programs (default true); include_unknown_periods=true includes programs with unannounced periods (default true); exclude_definitely_closed=true excludes confirmed closed (default true); strict=true gates on profile completeness, returns needs_input+required_fields if missing (default false); as_of_date=YYYY-MM-DD reference date, defaults to today KST. Returns compact top candidates {"ok":true,"items":[...],"result_count":N}; pass items to match_benefits() as the benefits parameter."""
+        """[Step 2/3] 혜택탐정(BenefitScout) | Search the welfare benefit database using the profile from save_profile(). Call AFTER save_profile(); pass profile["profile"] as the profile argument. Uses vector similarity search on pre-indexed Korean public benefit programs. profile=required dict from save_profile()["profile"]; keyword=optional search term to focus results, leave empty to auto-generate from profile e.g. "청년 월세"|"임산부 지원"; size=max internal candidates 1-30 default 30; available_only=true skips officially closed programs (default true); include_unknown_periods=true includes programs with unannounced periods (default true); exclude_definitely_closed=true excludes confirmed closed (default true); strict=true gates on profile completeness, returns needs_input+required_fields if missing (default false); as_of_date=YYYY-MM-DD reference date, defaults to today KST. Returns compact top candidates {"ok":true,"items":[...],"result_count":N}; pass items to match_benefits() and compare_benefits() as the benefits parameter."""
         available_only = True if available_only is None else bool(available_only)
         include_unknown_periods = True if include_unknown_periods is None else bool(include_unknown_periods)
         exclude_definitely_closed = (
@@ -224,7 +227,7 @@ def create_server() -> FastMCP:
         )
     )
     def match_benefits(profile: dict[str, Any], benefits: list[dict[str, Any]]) -> dict[str, Any]:
-        """[Step 3/3] Re-rank BenefitScout(혜택탐정) benefit candidates by eligibility likelihood and return the final list to show the user. Call AFTER search_benefits(). Re-ranks by age range, region match, household type, and target group signals beyond vector similarity. profile=same profile dict from save_profile(); benefits=items list from search_benefits()["items"], pass as-is without modification. Returns {"matches":[...],"matched_count":N,"disclaimer":"..."} with up to 5 programs sorted by likelihood (high>medium>low). Each match includes likelihood, match_score, matched_reasons, and compact benefit details. ALWAYS show the disclaimer text verbatim when presenting results to the user. Likelihood scores indicate relevance, NOT confirmed eligibility — advise users to verify with the official organization."""
+        """[Step 3/3] 혜택탐정(BenefitScout) | Re-rank benefit candidates by eligibility likelihood and return the final list to show the user. Call AFTER search_benefits(). Re-ranks by age range, region match, household type, and target group signals beyond vector similarity. profile=same profile dict from save_profile(); benefits=items list from search_benefits()["items"], pass as-is without modification. Returns {"matches":[...],"matched_count":N,"disclaimer":"..."} with up to 5 programs sorted by likelihood (high>medium>low). Each match includes likelihood, match_score, matched_reasons, and compact benefit details. ALWAYS show the disclaimer text verbatim when presenting results to the user. Likelihood scores indicate relevance, NOT confirmed eligibility — advise users to verify with the official organization."""
         matches = rank_benefits(profile, benefits)[:MAX_USER_BENEFIT_RESULTS]
         input_count = len(benefits)
         matched_count = len(matches)
@@ -248,6 +251,24 @@ def create_server() -> FastMCP:
             "max_size": MAX_USER_BENEFIT_RESULTS,
         }
 
+    # 여러 후보의 차이점을 표 형태로 정리한다.
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Compare Benefit Candidates",
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    def compare_benefits(
+        profile: dict[str, Any],
+        benefits: list[dict[str, Any]],
+        focus: str = "",
+    ) -> dict[str, Any]:
+        """혜택탐정(BenefitScout) | Compare several benefit candidates side by side for the user's profile. Call AFTER search_benefits() or match_benefits() when the user asks "뭐가 달라?", "어느 게 나아?", "비교해줘", or when similar programs appear. profile=same profile dict from save_profile(); benefits=items from search_benefits()["items"] OR matches from match_benefits()["matches"] (both formats are accepted); focus=optional comparison angle e.g. "월세", "취업", "신청 쉬운 순". Returns a compact comparison table with target, region, age, period, support content, application method, official link, fit reasons, and missing fields to verify. Do NOT invent missing eligibility details; show "확인 필요" when source data is incomplete. Always show the disclaimer."""
+        return build_benefit_comparison(profile=profile, benefits=benefits, focus=focus)
+
     # Kakao Local API로 방문 가능한 기관/센터를 검색한다.
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -259,7 +280,7 @@ def create_server() -> FastMCP:
         )
     )
     def find_visit_offices(query: str, x: str = "", y: str = "") -> dict[str, Any]:
-        """Find nearby public offices or welfare centers for in-person benefit applications in BenefitScout(혜택탐정). Call when the user asks where to apply in person, or when a benefit's application_method contains "방문 신청" or "주민센터 방문". Uses Kakao Local API for real-time location search. query=Korean office type e.g. "주민센터","행정복지센터","복지관","고용복지플러스센터","청년센터"; append region for locality e.g. "강남구 주민센터","수원시 고용센터". x=longitude WGS84 decimal string e.g. "127.0276" (optional); y=latitude WGS84 decimal string e.g. "37.4979" (optional); omit x and y if user location is unknown. Returns {"ok":true,"places":[...],"guidance":"..."} with name, address, phone, and map URL per place. When presenting results, tell the user that in-person welfare applications usually require the resident-registration jurisdiction 주민센터/행정복지센터, and they should call before visiting. Show only the closest 1-2 places per queried region to keep the answer concise. Returns {"ok":false,"error":"..."} if Kakao API is unavailable."""
+        """혜택탐정(BenefitScout) | Find nearby public offices or welfare centers for in-person benefit applications. Call when the user asks where to apply in person, or when a benefit's application_method contains "방문 신청" or "주민센터 방문". Uses Kakao Local API for real-time location search. query=Korean office type e.g. "주민센터","행정복지센터","복지관","고용복지플러스센터","청년센터"; append region for locality e.g. "강남구 주민센터","수원시 고용센터". x=longitude WGS84 decimal string e.g. "127.0276" (optional); y=latitude WGS84 decimal string e.g. "37.4979" (optional); omit x and y if user location is unknown. Returns {"ok":true,"places":[...],"guidance":"..."} with name, address, phone, and map URL per place. When presenting results, tell the user that in-person welfare applications usually require the resident-registration jurisdiction 주민센터/행정복지센터, and they should call before visiting. Show only the closest 1-2 places per queried region to keep the answer concise. Returns {"ok":false,"error":"..."} if Kakao API is unavailable."""
         try:
             return local.keyword_search(query=query, x=x, y=y)
         except ExternalApiError as exc:
@@ -318,6 +339,146 @@ def with_search_match_metadata(profile: dict[str, Any], match: dict[str, Any]) -
         "match_score": match["score"],
         "matched_reasons": match["matched_reasons"],
     }
+
+
+def build_benefit_comparison(
+    *,
+    profile: dict[str, Any],
+    benefits: list[dict[str, Any]],
+    focus: str = "",
+) -> dict[str, Any]:
+    rows = []
+    for raw_item in benefits[:MAX_COMPARE_BENEFITS]:
+        item = unwrap_benefit(raw_item)
+        if not item:
+            continue
+        rows.append(compare_row(profile, raw_item, item))
+
+    return {
+        "ok": bool(rows),
+        "focus": truncate_text(focus, COMPARE_FIELD_LIMIT),
+        "comparison": rows,
+        "compared_count": len(rows),
+        "max_size": MAX_COMPARE_BENEFITS,
+        "message": (
+            "비교할 후보가 없습니다. 먼저 search_benefits로 후보를 찾고, 그 items 또는 match_benefits의 matches를 넘겨주세요."
+            if not rows else ""
+        ),
+        "how_to_choose": [
+            "지역·연령 조건이 맞는 후보를 먼저 보세요.",
+            "지원 내용이 비슷하면 신청기간과 신청방법이 명확한 후보부터 확인하세요.",
+            "확인 필요 항목은 공식 링크나 담당 기관 문의로 최종 확인하세요.",
+        ] if rows else [],
+        "disclaimer": "비교 결과는 원천 데이터에 있는 항목만 정리한 것이며, 최종 자격과 중복 수급 가능 여부는 공고문/기관 기준 확인이 필요합니다.",
+    }
+
+
+def unwrap_benefit(item: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+    benefit = item.get("benefit")
+    if isinstance(benefit, dict):
+        return benefit
+    return item
+
+
+def compare_row(
+    profile: dict[str, Any],
+    raw_item: dict[str, Any],
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    compact = to_search_item(item)
+    likelihood, score, reasons = comparison_fit(profile, raw_item, item)
+    checks = verification_notes(compact)
+    return {
+        "title": truncate_text(compact.get("title"), COMPARE_FIELD_LIMIT) or "확인 필요",
+        "organization": compact.get("organization", "확인 필요"),
+        "region": benefit_region_label(compact),
+        "age": benefit_age_label(compact),
+        "period": compact.get("application_period", "확인 필요"),
+        "support": first_present(compact, "summary", "content", default="확인 필요"),
+        "target": compact.get("target", "확인 필요"),
+        "application": compact.get("application_method", "확인 필요"),
+        "contact": compact.get("contact", "확인 필요"),
+        "official_link": official_link(compact),
+        "fit": {
+            "likelihood": likelihood,
+            "match_score": score,
+            "reasons": reasons,
+        },
+        "check_before_apply": checks,
+    }
+
+
+def comparison_fit(
+    profile: dict[str, Any],
+    raw_item: dict[str, Any],
+    item: dict[str, Any],
+) -> tuple[str, int | None, list[str]]:
+    likelihood = raw_item.get("likelihood") or item.get("likelihood") or ""
+    score = raw_item.get("match_score") or item.get("match_score")
+    reasons = raw_item.get("matched_reasons") or item.get("matched_reasons") or []
+    if not reasons:
+        matches = rank_benefits(profile, [item])
+        if matches:
+            match = matches[0]
+            likelihood = likelihood or match.get("likelihood", "")
+            score = score if score not in (None, "") else match.get("score")
+            reasons = match.get("matched_reasons", [])
+    return (
+        str(likelihood or "확인 필요"),
+        int(score) if isinstance(score, int | float) else None,
+        [truncate_text(reason, COMPARE_NOTE_LIMIT) for reason in compact_reasons(reasons)],
+    )
+
+
+def benefit_region_label(item: dict[str, Any]) -> str:
+    sido = str(item.get("region_sido") or "").strip()
+    sigungu = str(item.get("region_sigungu") or "").strip()
+    if sido and sigungu:
+        return f"{sido} {sigungu}"
+    return sido or sigungu or item.get("region_scope") or "전국/확인 필요"
+
+
+def benefit_age_label(item: dict[str, Any]) -> str:
+    age_min = item.get("age_min")
+    age_max = item.get("age_max")
+    if age_min not in (None, "") and age_max not in (None, ""):
+        return f"{age_min}~{age_max}세"
+    if age_min not in (None, ""):
+        return f"{age_min}세 이상"
+    if age_max not in (None, ""):
+        return f"{age_max}세 이하"
+    return "확인 필요"
+
+
+def verification_notes(item: dict[str, Any]) -> list[str]:
+    notes = []
+    if not item.get("application_period"):
+        notes.append("신청기간")
+    if not item.get("criteria"):
+        notes.append("자격기준")
+    if not item.get("application_method"):
+        notes.append("신청방법")
+    if not official_link(item):
+        notes.append("공식링크")
+    return notes or ["공식 공고문 최종 확인"]
+
+
+def official_link(item: dict[str, Any]) -> str:
+    for key in ("url", "application_url"):
+        value = item.get(key)
+        if value not in (None, "", [], {}):
+            return str(value)
+    return ""
+
+
+def first_present(item: dict[str, Any], *keys: str, default: str = "") -> str:
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, "", [], {}):
+            return truncate_text(value, COMPARE_FIELD_LIMIT)
+    return default
 
 
 # 검색/매칭 결과를 PlayMCP 응답 크기 제한에 맞게 핵심 필드로 정리한다.
